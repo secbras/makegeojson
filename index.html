@@ -1,0 +1,883 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Editor GeoJSON Avançado</title>
+    
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+    
+    <!-- Leaflet.draw CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css">
+    
+    <!-- CodeMirror -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.0/codemirror.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.0/theme/dracula.min.css">
+    
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        :root {
+            --primary-color: #3388ff;
+            --secondary-color: #2a72cc;
+            --dark-color: #1a1a1a;
+            --light-color: #f8f9fa;
+            --sidebar-width: 350px;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            color: #333;
+            overflow: hidden;
+            height: 100vh;
+        }
+        
+        #app-container {
+            display: flex;
+            height: 100vh;
+            width: 100vw;
+        }
+        
+        /* Sidebar */
+        #sidebar {
+            width: var(--sidebar-width);
+            background: white;
+            border-right: 1px solid #ddd;
+            display: flex;
+            flex-direction: column;
+            z-index: 1000;
+            transition: transform 0.3s ease;
+        }
+        
+        .sidebar-header {
+            padding: 12px 15px;
+            background: var(--dark-color);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        
+        .sidebar-header h1 {
+            font-size: 1.2rem;
+            font-weight: 500;
+        }
+        
+        .sidebar-tabs {
+            display: flex;
+            border-bottom: 1px solid #ddd;
+            background: #f5f5f5;
+        }
+        
+        .sidebar-tab {
+            padding: 10px 15px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            color: #555;
+            border-right: 1px solid #ddd;
+            flex: 1;
+            text-align: center;
+        }
+        
+        .sidebar-tab.active {
+            background: white;
+            color: var(--primary-color);
+            border-bottom: 2px solid var(--primary-color);
+        }
+        
+        .sidebar-content {
+            flex: 1;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        /* Editor */
+        #geojson-editor {
+            flex: 1;
+            overflow: hidden;
+        }
+        
+        .CodeMirror {
+            height: 100% !important;
+            font-family: 'Roboto Mono', monospace;
+            font-size: 13px;
+            line-height: 1.4;
+        }
+        
+        /* Toolbar */
+        .toolbar {
+            padding: 8px 10px;
+            background: white;
+            border-bottom: 1px solid #ddd;
+            display: flex;
+            gap: 5px;
+            flex-wrap: wrap;
+        }
+        
+        .btn {
+            padding: 6px 10px;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+            background: white;
+            color: #333;
+            cursor: pointer;
+            font-size: 0.85rem;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            transition: all 0.2s ease;
+            white-space: nowrap;
+        }
+        
+        .btn:hover {
+            background: #f0f0f0;
+        }
+        
+        .btn-primary {
+            background: var(--primary-color);
+            color: white;
+            border-color: var(--secondary-color);
+        }
+        
+        .btn-primary:hover {
+            background: var(--secondary-color);
+        }
+        
+        .btn-danger {
+            background: #ff4444;
+            color: white;
+            border-color: #cc0000;
+        }
+        
+        .btn-danger:hover {
+            background: #cc0000;
+        }
+        
+        /* Map */
+        #map {
+            flex: 1;
+            height: 100%;
+        }
+        
+        /* Feature list */
+        .feature-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 5px;
+        }
+        
+        .feature-item {
+            padding: 8px 10px;
+            margin-bottom: 5px;
+            background: white;
+            border-radius: 3px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border-left: 2px solid var(--primary-color);
+            font-size: 0.85rem;
+        }
+        
+        .feature-item:hover {
+            background: #f0f7ff;
+        }
+        
+        .feature-item h4 {
+            font-size: 0.9rem;
+            margin-bottom: 3px;
+            color: var(--dark-color);
+        }
+        
+        .feature-item p {
+            font-size: 0.8rem;
+            color: #666;
+        }
+        
+        /* Map controls */
+        .map-controls {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        
+        .map-toggle {
+            background: white;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+            padding: 5px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 32px;
+            height: 32px;
+            box-shadow: 0 1px 5px rgba(0,0,0,0.1);
+        }
+        
+        .map-toggle:hover {
+            background: #f5f5f5;
+        }
+        
+        .map-toggle.active {
+            background: var(--primary-color);
+            color: white;
+        }
+        
+        /* Responsive */
+        @media (max-width: 768px) {
+            #sidebar {
+                position: absolute;
+                width: 100%;
+                height: 50%;
+                bottom: 0;
+                transform: translateY(100%);
+                border-right: none;
+                border-top: 1px solid #ddd;
+            }
+            
+            #sidebar.open {
+                transform: translateY(0);
+            }
+            
+            .sidebar-toggle {
+                display: block;
+            }
+            
+            .toolbar {
+                padding: 8px;
+            }
+            
+            .btn {
+                padding: 6px 8px;
+                font-size: 0.8rem;
+            }
+        }
+        
+        /* Toggle sidebar button */
+        .sidebar-toggle {
+            position: absolute;
+            left: 10px;
+            bottom: 10px;
+            z-index: 1000;
+            background: white;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+            padding: 8px;
+            cursor: pointer;
+            display: none;
+            box-shadow: 0 1px 5px rgba(0,0,0,0.1);
+        }
+
+        /* Loader */
+        .loader {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 1001;
+            background: rgba(255,255,255,0.9);
+            padding: 20px;
+            border-radius: 5px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            display: none;
+        }
+        
+        /* Style panel improvements */
+        #style-panel {
+            padding: 10px;
+        }
+        
+        .style-control {
+            margin-bottom: 15px;
+        }
+        
+        .style-control label {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 0.9rem;
+            color: #555;
+        }
+        
+        .style-control input[type="color"] {
+            width: 100%;
+            height: 30px;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+        }
+        
+        .style-control input[type="range"] {
+            width: 100%;
+        }
+        
+        /* Feature list empty state */
+        .empty-state {
+            padding: 20px;
+            text-align: center;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div id="app-container">
+        <!-- Sidebar -->
+        <div id="sidebar">
+            <div class="sidebar-header">
+                <h1><i class="fas fa-map"></i> Editor GeoJSON</h1>
+            </div>
+            
+            <div class="sidebar-tabs">
+                <div class="sidebar-tab active" data-tab="editor"><i class="fas fa-code"></i> Editor</div>
+                <div class="sidebar-tab" data-tab="features"><i class="fas fa-layer-group"></i> Camadas</div>
+                <div class="sidebar-tab" data-tab="styles"><i class="fas fa-palette"></i> Estilos</div>
+            </div>
+            
+            <div class="toolbar">
+                <button class="btn" id="draw-marker" title="Adicionar marcador"><i class="fas fa-map-marker-alt"></i> <span class="btn-text">Ponto</span></button>
+                <button class="btn" id="draw-line" title="Desenhar linha"><i class="fas fa-slash"></i> <span class="btn-text">Linha</span></button>
+                <button class="btn" id="draw-polygon" title="Desenhar polígono"><i class="fas fa-draw-polygon"></i> <span class="btn-text">Polígono</span></button>
+                <button class="btn" id="draw-rectangle" title="Desenhar retângulo"><i class="fas fa-vector-square"></i> <span class="btn-text">Retângulo</span></button>
+                <button class="btn" id="draw-circle" title="Desenhar círculo"><i class="fas fa-circle"></i> <span class="btn-text">Círculo</span></button>
+                <button class="btn btn-danger" id="delete-features" title="Remover todos os elementos"><i class="fas fa-trash"></i> <span class="btn-text">Limpar</span></button>
+                <button class="btn" id="import" title="Importar arquivo"><i class="fas fa-file-import"></i> <span class="btn-text">Importar</span></button>
+                <button class="btn btn-primary" id="save" title="Salvar GeoJSON"><i class="fas fa-save"></i> <span class="btn-text">Salvar</span></button>
+            </div>
+            
+            <div class="sidebar-content">
+                <div id="geojson-editor"></div>
+                
+                <div id="feature-list" class="feature-list" style="display: none;">
+                    <!-- Feature items will be added here dynamically -->
+                </div>
+                
+                <div id="style-panel" class="feature-list" style="display: none;">
+                    <div class="style-control">
+                        <label for="stroke-color">Cor da borda:</label>
+                        <input type="color" id="stroke-color" value="#3388ff">
+                    </div>
+                    <div class="style-control">
+                        <label for="fill-color">Cor do preenchimento:</label>
+                        <input type="color" id="fill-color" value="#3388ff">
+                    </div>
+                    <div class="style-control">
+                        <label for="opacity">Opacidade: <span id="opacity-value">0.5</span></label>
+                        <input type="range" id="opacity" min="0" max="1" step="0.1" value="0.5">
+                    </div>
+                    <div class="style-control">
+                        <label for="weight">Espessura da linha: <span id="weight-value">2</span></label>
+                        <input type="range" id="weight" min="1" max="10" step="1" value="2">
+                    </div>
+                    <button class="btn btn-primary" id="apply-styles" style="width: 100%;">Aplicar Estilos</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Map container -->
+        <div id="map"></div>
+        
+        <!-- Map controls -->
+        <div class="map-controls">
+            <div class="map-toggle active" id="toggle-street" title="Mapa de ruas">
+                <i class="fas fa-map"></i>
+            </div>
+            <div class="map-toggle" id="toggle-satellite" title="Vista de satélite">
+                <i class="fas fa-satellite"></i>
+            </div>
+        </div>
+        
+        <!-- Toggle sidebar button (mobile) -->
+        <div class="sidebar-toggle" id="toggle-sidebar">
+            <i class="fas fa-chevron-up"></i>
+        </div>
+
+        <!-- Loader -->
+        <div class="loader" id="loader">
+            <p>Carregando...</p>
+        </div>
+    </div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- Leaflet.draw -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+    <!-- CodeMirror -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.0/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.0/mode/javascript/javascript.min.js"></script>
+    <!-- Turf.js -->
+    <script src="https://unpkg.com/@turf/turf@6/turf.min.js"></script>
+    <!-- FileSaver.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    <!-- toGeoJSON -->
+    <script src="https://unpkg.com/@mapbox/togeojson@0.16.0"></script>
+
+    <script>
+        // Initialize variables
+        let map;
+        let drawControl;
+        let drawnItems = new L.FeatureGroup();
+        let currentStyles = {
+            color: '#3388ff',
+            fillColor: '#3388ff',
+            fillOpacity: 0.5,
+            weight: 2
+        };
+        
+        // Initialize 2D map
+        function initMap() {
+            map = L.map('map').setView([-14.2350, -51.9253], 4);
+            
+            // Base maps
+            const streetMap = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contribuidores',
+                maxZoom: 19
+            }).addTo(map);
+            
+            const satelliteMap = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+                attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community',
+                maxZoom: 19
+            });
+            
+            map.addLayer(drawnItems);
+            
+            // Store base layers for toggling
+            window.mapLayers = {
+                street: streetMap,
+                satellite: satelliteMap
+            };
+        }
+        
+        // Initialize editor
+        function initEditor() {
+            const editor = CodeMirror(document.getElementById('geojson-editor'), {
+                mode: 'javascript',
+                theme: 'dracula',
+                lineNumbers: true,
+                lineWrapping: true,
+                autoCloseBrackets: true,
+                matchBrackets: true,
+                value: JSON.stringify({
+                    "type": "FeatureCollection",
+                    "features": [
+                        {
+                            "type": "Feature",
+                            "properties": {
+                                "nome": "Aeroporto Internacional de Brasília",
+                                "cidade": "Brasília",
+                                "tipo": "Aeroporto"
+                            },
+                            "geometry": {
+                                "type": "Point",
+                                "coordinates": [-47.9186, -15.8711]
+                            }
+                        },
+                        {
+                            "type": "Feature",
+                            "properties": {
+                                "nome": "Parque Nacional da Tijuca",
+                                "cidade": "Rio de Janeiro",
+                                "tipo": "Parque"
+                            },
+                            "geometry": {
+                                "type": "Polygon",
+                                "coordinates": [[
+                                    [-43.2277, -22.9554],
+                                    [-43.2105, -22.9554],
+                                    [-43.2105, -22.9423],
+                                    [-43.2277, -22.9423],
+                                    [-43.2277, -22.9554]
+                                ]]
+                            }
+                        }
+                    ]
+                }, null, 2)
+            });
+            
+            return editor;
+        }
+        
+        // Initialize draw control
+        function initDrawControl() {
+            drawControl = new L.Control.Draw({
+                edit: {
+                    featureGroup: drawnItems,
+                    edit: {
+                        selectedPathOptions: {
+                            color: currentStyles.color,
+                            fillColor: currentStyles.fillColor,
+                            fillOpacity: currentStyles.fillOpacity,
+                            weight: currentStyles.weight
+                        }
+                    }
+                },
+                draw: {
+                    polygon: {
+                        shapeOptions: currentStyles,
+                        allowIntersection: false,
+                        showArea: true,
+                        metric: true,
+                        guidelineDistance: 20,
+                        showLength: true
+                    },
+                    polyline: {
+                        shapeOptions: {
+                            color: currentStyles.color,
+                            weight: currentStyles.weight
+                        },
+                        metric: true,
+                        showLength: true
+                    },
+                    rectangle: {
+                        shapeOptions: currentStyles,
+                        showArea: true,
+                        metric: true
+                    },
+                    circle: {
+                        shapeOptions: currentStyles,
+                        showRadius: true,
+                        metric: true,
+                        feet: false
+                    },
+                    marker: {
+                        icon: L.icon({
+                            iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
+                            iconSize: [25, 41],
+                            iconAnchor: [12, 41],
+                            popupAnchor: [1, -34]
+                        })
+                    }
+                }
+            });
+            map.addControl(drawControl);
+        }
+        
+        // Update GeoJSON editor
+        function updateGeoJSON(editor) {
+            const geojson = drawnItems.toGeoJSON();
+            editor.setValue(JSON.stringify(geojson, null, 2));
+            updateFeatureList(geojson);
+        }
+        
+        // Update map from editor
+        function updateMapFromEditor(editor) {
+            try {
+                const geojson = JSON.parse(editor.getValue());
+                drawnItems.clearLayers();
+                
+                L.geoJSON(geojson, {
+                    pointToLayer: function(feature, latlng) {
+                        return L.marker(latlng, {
+                            icon: L.icon({
+                                iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
+                                iconSize: [25, 41],
+                                iconAnchor: [12, 41],
+                                popupAnchor: [1, -34]
+                            })
+                        });
+                    },
+                    style: function(feature) {
+                        return currentStyles;
+                    },
+                    onEachFeature: function(feature, layer) {
+                        bindPopup(layer);
+                    }
+                }).eachLayer(function(layer) {
+                    drawnItems.addLayer(layer);
+                });
+                
+                updateFeatureList(geojson);
+                
+                // Zoom to features if there are any
+                if (geojson.features && geojson.features.length > 0) {
+                    map.fitBounds(drawnItems.getBounds());
+                }
+            } catch (e) {
+                console.error('GeoJSON inválido', e);
+                alert('Erro: GeoJSON inválido. Por favor, verifique o formato.');
+            }
+        }
+        
+        // Update feature list
+        function updateFeatureList(geojson) {
+            const featureList = document.getElementById('feature-list');
+            featureList.innerHTML = '';
+            
+            if (geojson.features && geojson.features.length > 0) {
+                geojson.features.forEach((feature, index) => {
+                    const featureItem = document.createElement('div');
+                    featureItem.className = 'feature-item';
+                    featureItem.dataset.index = index;
+                    
+                    const title = feature.properties?.nome || feature.properties?.name || `Elemento ${index + 1}`;
+                    const type = feature.geometry?.type || 'Desconhecido';
+                    
+                    featureItem.innerHTML = `
+                        <h4>${title}</h4>
+                        <p>Tipo: ${type}</p>
+                    `;
+                    
+                    featureItem.addEventListener('click', () => {
+                        const layer = Object.values(drawnItems._layers)[index];
+                        if (layer) {
+                            map.fitBounds(layer.getBounds());
+                            if (layer.openPopup) {
+                                layer.openPopup();
+                            }
+                        }
+                    });
+                    
+                    featureList.appendChild(featureItem);
+                });
+            } else {
+                featureList.innerHTML = '<div class="empty-state"><p>Nenhum elemento adicionado</p></div>';
+            }
+        }
+        
+        // Bind popup to layer
+        function bindPopup(layer) {
+            if (layer.feature?.properties) {
+                let content = '<div style="min-width: 150px; max-width: 300px;">';
+                
+                const title = layer.feature.properties.nome || layer.feature.properties.name;
+                if (title) {
+                    content += `<h4 style="margin-bottom: 5px;">${title}</h4>`;
+                }
+                
+                for (const key in layer.feature.properties) {
+                    if (key !== 'nome' && key !== 'name') {
+                        content += `<p style="margin: 2px 0;"><strong>${key}:</strong> ${layer.feature.properties[key]}</p>`;
+                    }
+                }
+                
+                content += '</div>';
+                layer.bindPopup(content);
+            }
+        }
+        
+        // Apply styles to features
+        function applyStyles() {
+            currentStyles = {
+                color: document.getElementById('stroke-color').value,
+                fillColor: document.getElementById('fill-color').value,
+                fillOpacity: parseFloat(document.getElementById('opacity').value),
+                weight: parseInt(document.getElementById('weight').value)
+            };
+            
+            document.getElementById('opacity-value').textContent = currentStyles.fillOpacity;
+            document.getElementById('weight-value').textContent = currentStyles.weight;
+            
+            drawnItems.eachLayer(layer => {
+                if (layer.setStyle) {
+                    layer.setStyle(currentStyles);
+                }
+            });
+        }
+        
+        // Import files
+        function importFile(file, editor) {
+            const reader = new FileReader();
+            
+            reader.onload = function(e) {
+                try {
+                    if (file.name.endsWith('.geojson') || file.name.endsWith('.json')) {
+                        const geojson = JSON.parse(e.target.result);
+                        editor.setValue(JSON.stringify(geojson, null, 2));
+                        updateMapFromEditor(editor);
+                    } else if (file.name.endsWith('.kml')) {
+                        // Convert KML to GeoJSON
+                        const kml = (new DOMParser()).parseFromString(e.target.result, 'text/xml');
+                        const geojson = toGeoJSON.kml(kml);
+                        editor.setValue(JSON.stringify(geojson, null, 2));
+                        updateMapFromEditor(editor);
+                    } else {
+                        alert('Formato de arquivo não suportado. Use GeoJSON ou KML.');
+                    }
+                } catch (error) {
+                    alert('Erro ao processar arquivo: ' + error.message);
+                }
+            };
+            
+            if (file.name.endsWith('.geojson') || file.name.endsWith('.json') || file.name.endsWith('.kml')) {
+                reader.readAsText(file);
+            } else {
+                alert('Formato de arquivo não suportado. Use GeoJSON ou KML.');
+            }
+        }
+        
+        // Event listeners
+        function setupEventListeners(editor) {
+            // Tab switching
+            document.querySelectorAll('.sidebar-tab').forEach(tab => {
+                tab.addEventListener('click', () => {
+                    document.querySelectorAll('.sidebar-tab').forEach(t => t.classList.remove('active'));
+                    tab.classList.add('active');
+                    
+                    document.getElementById('geojson-editor').style.display = 'none';
+                    document.getElementById('feature-list').style.display = 'none';
+                    document.getElementById('style-panel').style.display = 'none';
+                    
+                    if (tab.dataset.tab === 'editor') {
+                        document.getElementById('geojson-editor').style.display = 'block';
+                    } else if (tab.dataset.tab === 'features') {
+                        document.getElementById('feature-list').style.display = 'block';
+                    } else if (tab.dataset.tab === 'styles') {
+                        document.getElementById('style-panel').style.display = 'block';
+                    }
+                });
+            });
+            
+            // Drawing events
+            map.on(L.Draw.Event.CREATED, function(e) {
+                const layer = e.layer;
+                drawnItems.addLayer(layer);
+                bindPopup(layer);
+                updateGeoJSON(editor);
+            });
+            
+            map.on('draw:edited', function(e) {
+                e.layers.eachLayer(function(layer) {
+                    bindPopup(layer);
+                });
+                updateGeoJSON(editor);
+            });
+            
+            map.on('draw:deleted', function(e) {
+                updateGeoJSON(editor);
+            });
+            
+            // Editor changes
+            editor.on('change', function() {
+                // Debounce to prevent rapid updates
+                clearTimeout(editor.debounce);
+                editor.debounce = setTimeout(() => updateMapFromEditor(editor), 1000);
+            });
+            
+            // Toolbar buttons
+            document.getElementById('draw-marker').addEventListener('click', function() {
+                new L.Draw.Marker(map, drawControl.options.draw.marker).enable();
+            });
+            
+            document.getElementById('draw-line').addEventListener('click', function() {
+                new L.Draw.Polyline(map, drawControl.options.draw.polyline).enable();
+            });
+            
+            document.getElementById('draw-polygon').addEventListener('click', function() {
+                new L.Draw.Polygon(map, drawControl.options.draw.polygon).enable();
+            });
+            
+            document.getElementById('draw-rectangle').addEventListener('click', function() {
+                new L.Draw.Rectangle(map, drawControl.options.draw.rectangle).enable();
+            });
+            
+            document.getElementById('draw-circle').addEventListener('click', function() {
+                new L.Draw.Circle(map, drawControl.options.draw.circle).enable();
+            });
+            
+            document.getElementById('delete-features').addEventListener('click', function() {
+                if (confirm('Tem certeza que deseja remover todos os elementos?')) {
+                    drawnItems.clearLayers();
+                    updateGeoJSON(editor);
+                }
+            });
+            
+            document.getElementById('import').addEventListener('click', function() {
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = '.geojson,.json,.kml';
+                input.onchange = e => {
+                    const file = e.target.files[0];
+                    if (file) importFile(file, editor);
+                };
+                input.click();
+            });
+            
+            document.getElementById('save').addEventListener('click', function() {
+                const geojson = drawnItems.toGeoJSON();
+                const blob = new Blob([JSON.stringify(geojson, null, 2)], { type: 'application/json' });
+                saveAs(blob, 'mapa.geojson');
+            });
+            
+            document.getElementById('apply-styles').addEventListener('click', function() {
+                applyStyles();
+                updateGeoJSON(editor);
+            });
+            
+            // Style controls updates
+            document.getElementById('opacity').addEventListener('input', function() {
+                document.getElementById('opacity-value').textContent = this.value;
+            });
+            
+            document.getElementById('weight').addEventListener('input', function() {
+                document.getElementById('weight-value').textContent = this.value;
+            });
+            
+            // Map toggles
+            document.getElementById('toggle-street').addEventListener('click', function() {
+                window.mapLayers.street.addTo(map);
+                window.mapLayers.satellite.remove();
+                
+                document.getElementById('toggle-street').classList.add('active');
+                document.getElementById('toggle-satellite').classList.remove('active');
+            });
+            
+            document.getElementById('toggle-satellite').addEventListener('click', function() {
+                window.mapLayers.satellite.addTo(map);
+                window.mapLayers.street.remove();
+                
+                document.getElementById('toggle-satellite').classList.add('active');
+                document.getElementById('toggle-street').classList.remove('active');
+            });
+            
+            // Toggle sidebar on mobile
+            document.getElementById('toggle-sidebar').addEventListener('click', function() {
+                document.getElementById('sidebar').classList.toggle('open');
+                this.querySelector('i').classList.toggle('fa-chevron-up');
+                this.querySelector('i').classList.toggle('fa-chevron-down');
+            });
+            
+            // Check for mobile
+            function checkMobile() {
+                if (window.innerWidth <= 768) {
+                    document.querySelector('.sidebar-toggle').style.display = 'block';
+                    // Hide text on buttons for mobile
+                    document.querySelectorAll('.btn-text').forEach(el => {
+                        el.style.display = 'none';
+                    });
+                } else {
+                    document.querySelector('.sidebar-toggle').style.display = 'none';
+                    // Show text on buttons for desktop
+                    document.querySelectorAll('.btn-text').forEach(el => {
+                        el.style.display = 'inline';
+                    });
+                }
+            }
+            
+            checkMobile();
+            
+            window.addEventListener('resize', checkMobile);
+        }
+        
+        // Initialize the application
+        function init() {
+            initMap();
+            const editor = initEditor();
+            initDrawControl();
+            setupEventListeners(editor);
+            updateMapFromEditor(editor);
+        }
+        
+        // Start the app when DOM is loaded
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>
